@@ -206,6 +206,47 @@ app.delete('/api/v1/delete-supplies/:id', async (req, res) => {
 });
 
 
+// Update a supply post
+app.patch('/api/v1/update-supplies/:id', parser.single('image'), async (req, res) => {
+    const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    try {
+      await client.connect();
+      const db = client.db('assignment');
+      const collection = db.collection('supplyPosts');
+  
+      const { id } = req.params;
+      const updateData = {};
+  
+      // If an image was uploaded, use the Cloudinary URL
+      if (req.file) {
+        updateData.image = req.file.path;
+      }
+  
+      if (req.body.category !== undefined) updateData.category = req.body.category;
+      if (req.body.title !== undefined) updateData.title = req.body.title;
+      if (req.body.amount !== undefined) updateData.amount = req.body.amount;
+      if (req.body.isFeatured !== undefined) updateData.isFeatured = req.body.isFeatured;
+  
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: 'No update fields provided' });
+      }
+  
+      const result = await collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(id) },
+        { $set: updateData }
+      );
+  
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ message: 'Cannot find supply post' });
+      }
+  
+      res.json({ message: 'Supply Post Updated', data: updateData });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    } finally {
+      await client.close();
+    }
+  });
 
 
 
