@@ -182,6 +182,28 @@ app.post('/api/v1/create-supply', async (req, res) => {
 
 
 
+// Delete a supply post
+app.delete('/api/v1/delete-supplies/:id', async (req, res) => {
+
+	try {
+		 const db = client.db('assignment');
+		 const collection = db.collection('supplyPosts');
+
+		 // Convert the id from string to ObjectId for MongoDB
+		 const { id } = req.params;
+		 const result = await collection.deleteOne({ _id: new mongoose.Types.ObjectId(id) });
+
+		 if (result.deletedCount === 0) {
+			  return res.status(404).json({ message: 'Cannot find supply post' });
+		 }
+
+		 res.json({ message: 'Deleted Supply Post' });
+	} catch (err) {
+		 res.status(500).json({ message: err.message });
+	} finally {
+		 await client.close();
+	}
+});
 
 
 
