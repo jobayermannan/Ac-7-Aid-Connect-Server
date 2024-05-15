@@ -184,8 +184,9 @@ app.post('/api/v1/create-supply', async (req, res) => {
 
 // Delete a supply post
 app.delete('/api/v1/delete-supplies/:id', async (req, res) => {
-
+    const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 	try {
+        await client.connect();
 		 const db = client.db('assignment');
 		 const collection = db.collection('supplyPosts');
 
