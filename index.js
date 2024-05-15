@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
- // Note: multer is imported but not used in the provided code.
+
 const bcrypt = require('bcrypt');
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
@@ -148,7 +148,36 @@ app.get('/api/v1/supplies', async (req, res) => {
 });
 
 
+// Create a supply post        
+app.post('/api/v1/create-supply', async (req, res) => {
+	console.log("Received request for /create-supply");
+	const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+	await client.connect();
+	const db = client.db('assignment');
+	const collection = db.collection('supplyPosts');
 
+	// Assuming SupplyPost model is correctly defined and imported
+	const { image, category, title, amount, isFeatured } = req.body;
+
+	const supply = new SupplyPost({
+		 image: image,
+		 category: category,
+		 title: title,
+		 amount: amount,
+		 isFeatured: isFeatured, // Make sure this field is defined in your schema if you're using it
+	});
+
+	try {
+		 const newSupply = await collection.insertOne(supply);
+		 res.status(201).json({
+			  success: true,
+			  data: newSupply,
+			  message: 'Supply created successfully'
+		 });
+	} catch (err) {
+		 res.status(400).json({ message: err.message });
+	}
+});
 
 
 
