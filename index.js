@@ -149,7 +149,7 @@ app.get('/api/v1/supplies', async (req, res) => {
 
 
 // Create a supply post        
-app.post('/api/v1/create-supply', async (req, res) => {
+app.post('/api/v1/create-supplies', async (req, res) => {
 	console.log("Received request for /create-supply");
 	const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 	await client.connect();
