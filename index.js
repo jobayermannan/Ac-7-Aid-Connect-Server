@@ -168,3 +168,14 @@ app.listen(port, () => {
 
 
 
+
+
+
+// Test route
+app.get('/', (req, res) => {
+	const serverStatus = {
+		 message: 'Server is running smoothly',
+		 timestamp: new Date()
+	};
+	res.json(serverStatus);
+});
