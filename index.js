@@ -149,35 +149,40 @@ app.get('/api/v1/supplies', async (req, res) => {
 
 
 // Create a supply post        
-app.post('/api/v1/create-supplies', async (req, res) => {
-	console.log("Received request for /create-supply");
-	const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-	await client.connect();
-	const db = client.db('assignment');
-	const collection = db.collection('supplyPosts');
+app.post('/api/v1/create-supplies', parser.single('image'), async (req, res) => {
+  console.log("Received request for /create-supply");
+  const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+  const db = client.db('assignment');
+  const collection = db.collection('supplyPosts');
 
-	// Assuming SupplyPost model is correctly defined and imported
-	const { image, category, title, amount, isFeatured } = req.body;
+  // Extract fields from req.body and req.file
+  const { category, title, amount,  } = req.body;
+  const image = req.file ? req.file.path : ''; 
+  const isFeaturedValue = req.body.isFeatured === 'true';
+  // Use Cloudinary URL if image is uploaded
 
-	const supply = new SupplyPost({
-		 image: image,
-		 category: category,
-		 title: title,
-		 amount: amount,
-		 isFeatured: isFeatured, // Make sure this field is defined in your schema if you're using it
-	});
+  const supply = {
+    image: image,
+    category: category,
+    title: title,
+    amount: amount,
+    isFeatured: isFeaturedValue,
+  };
 
-	try {
-		 const newSupply = await collection.insertOne(supply);
-		 res.status(201).json({
-			  success: true,
-			  data: newSupply,
-			  message: 'Supply created successfully'
-		 });
-	} catch (err) {
-		 res.status(400).json({ message: err.message });
-	}
-});
+  try {
+    const newSupply = await collection.insertOne(supply);
+    res.status(201).json({
+      success: true,
+      data: newSupply,
+      message: 'Supply created successfully'
+    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  } finally {
+    await client.close();
+  }
+}); 
 
 
 
@@ -208,6 +213,7 @@ app.delete('/api/v1/delete-supplies/:id', async (req, res) => {
 
 
 // Update a supply post
+
 app.patch('/api/v1/update-supplies/:id', parser.single('image'), async (req, res) => {
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
     try {
@@ -248,7 +254,6 @@ app.patch('/api/v1/update-supplies/:id', parser.single('image'), async (req, res
       await client.close();
     }
   });
-
 
 
 
