@@ -157,9 +157,10 @@ app.post('/api/v1/create-supplies', parser.single('image'), async (req, res) => 
   const collection = db.collection('supplyPosts');
 
   // Extract fields from req.body and req.file
-  const { category, title, amount,  } = req.body;
+  const { category, title, amount, featuring } = req.body;
   const image = req.file ? req.file.path : ''; 
-  const isFeaturedValue = req.body.isFeatured === 'true';
+  const isFeaturedValue = featuring === 'true';
+
   // Use Cloudinary URL if image is uploaded
 
   const supply = {
@@ -277,3 +278,7 @@ app.get('/', (req, res) => {
 	};
 	res.json(serverStatus);
 });
+
+
+
+
