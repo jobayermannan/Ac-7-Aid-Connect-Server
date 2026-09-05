@@ -20,7 +20,7 @@ const Schema = mongoose.Schema;
 
 // MongoDB Connection URL
 const uri = process.env.MONGODB_URI;
-mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true }).catch(err => console.error('MongoDB connection error (expected in test env):', err.message));
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -28,6 +28,22 @@ const port = process.env.PORT || 3001;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ success: false, message: 'Missing or invalid authorization header' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+        }
+        req.user = decoded;
+        next();
+    });
+};
 
 const SupplyPostSchema = new Schema({
   image: String,
@@ -79,60 +95,72 @@ async function getSupplyPost(req, res, next) {
 app.post('/api/v1/register', async (req, res) => {
     const { name, email, password } = req.body;
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    await client.connect();
-    const db = client.db('assignment');
-    const collection = db.collection('users');
+    try {
+        await client.connect();
+        const db = client.db('assignment');
+        const collection = db.collection('users');
 
-    const existingUser = await collection.findOne({ email });
-    if (existingUser) {
-        return res.status(400).json({
-            success: false,
-            message: 'User already exists'
+        const existingUser = await collection.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({
+                success: false,
+                message: 'User already exists'
+            });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await collection.insertOne({ name, email, password: hashedPassword });
+        res.status(201).json({
+            success: true,
+            message: 'User registered successfully'
         });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message || 'Registration failed' });
+    } finally {
+        await client.close();
     }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await collection.insertOne({ name, email, password: hashedPassword });
-    res.status(201).json({
-        success: true,
-        message: 'User registered successfully'
-    });
 });
 
 // User Login
 app.post('/api/v1/login', async (req, res) => {
     const { email, password } = req.body;
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    await client.connect();
-    const db = client.db('assignment');
-    const collection = db.collection('users');
+    try {
+        await client.connect();
+        const db = client.db('assignment');
+        const collection = db.collection('users');
 
-    const user = await collection.findOne({ email });
-    if (!user) {
-        return res.status(401).json({ message: 'Invalid email or password' });
+        const user = await collection.findOne({ email });
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
+
+        const token = jwt.sign({ email: user.email }, process.env.JWT_SECRET, { expiresIn: process.env.EXPIRES_IN });
+        res.json({
+            success: true,
+            message: 'Login successful',
+            token
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message || 'Login failed' });
+    } finally {
+        await client.close();
     }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-        return res.status(401).json({ message: 'Invalid email or password' });
-    }
-
-    const token = jwt.sign({ email: user.email }, process.env.JWT_SECRET, { expiresIn: process.env.EXPIRES_IN });
-    res.json({
-        success: true,
-        message: 'Login successful',
-        token
-    });
 });
 
 // Fetch supply posts endpoint
 app.get('/api/v1/supplies', async (req, res) => {
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-    await client.connect();
-    const db = client.db('assignment');
-    const supplyPostsCollection = db.collection('supplyPosts');
-
     try {
+        await client.connect();
+        const db = client.db('assignment');
+        const supplyPostsCollection = db.collection('supplyPosts');
+
         const supplyPosts = await supplyPostsCollection.find().toArray();
         res.status(200).json({
             success: true,
@@ -141,15 +169,16 @@ app.get('/api/v1/supplies', async (req, res) => {
     } catch (error) {
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch supply posts',
-            error: error.message
+            message: error.message || 'Failed to fetch supply posts'
         });
+    } finally {
+        await client.close();
     }
 });
 
 
 // Create a supply post        
-app.post('/api/v1/create-supplies', parser.single('image'), async (req, res) => {
+app.post('/api/v1/create-supplies', verifyToken, parser.single('image'), async (req, res) => {
   console.log("Received request for /create-supply");
   const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
   await client.connect();
@@ -179,7 +208,7 @@ app.post('/api/v1/create-supplies', parser.single('image'), async (req, res) => 
       message: 'Supply created successfully'
     });
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    res.status(400).json({ success: false, message: err.message || 'Supply creation failed' });
   } finally {
     await client.close();
   }
@@ -189,33 +218,33 @@ app.post('/api/v1/create-supplies', parser.single('image'), async (req, res) => 
 
 
 // Delete a supply post
-app.delete('/api/v1/delete-supplies/:id', async (req, res) => {
+app.delete('/api/v1/delete-supplies/:id', verifyToken, async (req, res) => {
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
 	try {
         await client.connect();
-		 const db = client.db('assignment');
-		 const collection = db.collection('supplyPosts');
+ 		 const db = client.db('assignment');
+ 		 const collection = db.collection('supplyPosts');
 
-		 // Convert the id from string to ObjectId for MongoDB
-		 const { id } = req.params;
-		 const result = await collection.deleteOne({ _id: new mongoose.Types.ObjectId(id) });
+ 		 // Convert the id from string to ObjectId for MongoDB
+ 		 const { id } = req.params;
+ 		 const result = await collection.deleteOne({ _id: new mongoose.Types.ObjectId(id) });
 
-		 if (result.deletedCount === 0) {
-			  return res.status(404).json({ message: 'Cannot find supply post' });
-		 }
+ 		 if (result.deletedCount === 0) {
+ 			  return res.status(404).json({ message: 'Cannot find supply post' });
+ 		 }
 
-		 res.json({ message: 'Deleted Supply Post' });
-	} catch (err) {
-		 res.status(500).json({ message: err.message });
-	} finally {
-		 await client.close();
-	}
+ 		 res.json({ message: 'Deleted Supply Post' });
+	 } catch (err) {
+ 		 res.status(500).json({ success: false, message: err.message || 'Delete failed' });
+ 	} finally {
+ 		 await client.close();
+ 	}
 });
 
 
 // Update a supply post
 
-app.patch('/api/v1/update-supplies/:id', parser.single('image'), async (req, res) => {
+app.patch('/api/v1/update-supplies/:id', verifyToken, parser.single('image'), async (req, res) => {
     const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
     try {
       await client.connect();
@@ -250,7 +279,7 @@ app.patch('/api/v1/update-supplies/:id', parser.single('image'), async (req, res
   
       res.json({ message: 'Supply Post Updated', data: updateData });
     } catch (err) {
-      res.status(500).json({ message: err.message });
+      res.status(500).json({ success: false, message: err.message || 'Update failed' });
     } finally {
       await client.close();
     }
